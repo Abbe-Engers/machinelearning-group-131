@@ -197,13 +197,26 @@ def train_lstm_model(model, X_train, y_train, X_test, y_test, fast_mode=False):
     )
     
     # Plot training history
-    plt.figure(figsize=(10, 6))
+    # Plot training history - loss
+    plt.figure(figsize=(12, 5))
+    plt.subplot(1, 2, 1)
     plt.plot(history.history['loss'], label='Train Loss')
-    plt.plot(history.history['val_loss'], label='Validation Loss')
+    plt.plot(history.history['val_loss'], label='Validation Loss') 
     plt.title('LSTM Model Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.legend()
+
+    # Plot training history - accuracy
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['accuracy'], label='Train Accuracy')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+    plt.title('LSTM Model Accuracy')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+
+    plt.tight_layout()
     plt.savefig('lstm_training_history.png')
     
     return model
