@@ -106,7 +106,9 @@ def calculate_anomaly_score(prediction_probs, actual_values, processor):
         'merchant_encoded': 0.2,  # Merchant is important
         'category_encoded': 0.1,
         'lat': 0.05,
-        'long': 0.05
+        'long': 0.05,
+        'merch_lat': 0.05,
+        'merch_long': 0.05
     }
     
     total_score = sum(feature_scores[f] * weights[f] for f in feature_scores)

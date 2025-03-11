@@ -195,7 +195,8 @@ def train_lstm_model(model, X_train, y_train, X_test, y_test, fast_mode=False):
     num_samples = X_train.shape[0]
     
     if fast_mode:
-        epochs = 20
+        epochs = 1
+        # epochs = 20
         batch_size = min(32, max(8, num_samples // 100))
         patience = 5
     else:
@@ -212,15 +213,24 @@ def train_lstm_model(model, X_train, y_train, X_test, y_test, fast_mode=False):
     )
     
     # Convert y_train and y_test to the format expected by the model
-    y_train_dict = {
-        feature: np.stack([y[feature] for y in y_train]) 
-        for feature in y_train[0].keys()
-    }
+    # Fix the shape mismatch by ensuring each feature array has the correct dimensions
+    y_train_dict = {}
+    for feature in y_train[0].keys():
+        stacked_data = np.stack([y[feature] for y in y_train])
+        # Check if the stacked data has 3 dimensions and needs to be reshaped
+        if stacked_data.ndim == 3:
+            # Reshape from (samples, 1, classes) to (samples, classes)
+            stacked_data = stacked_data.reshape(stacked_data.shape[0], stacked_data.shape[2])
+        y_train_dict[feature] = stacked_data
     
-    y_test_dict = {
-        feature: np.stack([y[feature] for y in y_test]) 
-        for feature in y_test[0].keys()
-    }
+    y_test_dict = {}
+    for feature in y_test[0].keys():
+        stacked_data = np.stack([y[feature] for y in y_test])
+        # Check if the stacked data has 3 dimensions and needs to be reshaped
+        if stacked_data.ndim == 3:
+            # Reshape from (samples, 1, classes) to (samples, classes)
+            stacked_data = stacked_data.reshape(stacked_data.shape[0], stacked_data.shape[2])
+        y_test_dict[feature] = stacked_data
     
     history = model.fit(
         X_train,
