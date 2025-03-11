@@ -37,9 +37,9 @@ def main(sample_size=1.0, fast_mode=False):
     lstm_model = create_lstm_model(input_shape, output_shape)
     lstm_model = train_lstm_model(lstm_model, X_train, y_train, X_test, y_test, fast_mode=fast_mode)
     
-    lstm_model.save('lstm_transaction_model.h5')
-    joblib.dump(scaler, 'transaction_scaler.joblib')
-    joblib.dump(encoders, 'categorical_encoders.joblib')
+    lstm_model.save('models/lstm_transaction_model.h5')
+    joblib.dump(scaler, 'models/transaction_scaler.joblib')
+    joblib.dump(encoders, 'models/categorical_encoders.joblib')
     
     print("Model and preprocessing objects saved.")
     
