@@ -14,8 +14,7 @@ def prepare_sequence(transactions, sequence_length, processor):
     recent_transactions = transactions.iloc[-sequence_length:]
     sequence = recent_transactions[processor.continuous_features + 
                                  processor.discrete_features + 
-                                 processor.categorical_features + 
-                                 [processor.target]].values
+                                 processor.categorical_features].values
     
     return sequence.reshape(1, sequence_length, -1)
 
@@ -127,8 +126,7 @@ def predict_next_transaction(model, user_transactions, sequence_length, processo
     # Create visualization of the distributions
     features_to_plot = (processor.continuous_features + 
                        processor.discrete_features + 
-                       processor.categorical_features + 
-                       [processor.target])
+                       processor.categorical_features)
     
     n_rows = (len(features_to_plot) + 2) // 3
     fig, axes = plt.subplots(n_rows, 3, figsize=(15, 4*n_rows))
@@ -150,14 +148,11 @@ def predict_next_transaction(model, user_transactions, sequence_length, processo
         feature: get_most_likely_value(processor, feature, predictions)
         for feature in features_to_plot
     }
-    
-    # Calculate fraud probability
-    fraud_prob = predictions['is_fraud'][0][1]
+
     
     # Create a summary dictionary
     prediction_summary = {
         'most_likely_values': most_likely_values,
-        'fraud_probability': fraud_prob,
         'raw_distributions': predictions
     }
     
@@ -166,13 +161,6 @@ def predict_next_transaction(model, user_transactions, sequence_length, processo
 def interpret_prediction(prediction_summary, processor, threshold=0.7):
     """Interpret the prediction results and provide insights."""
     insights = []
-    
-    # Analyze fraud probability
-    fraud_prob = prediction_summary['fraud_probability']
-    if fraud_prob > threshold:
-        insights.append(f"⚠️ High fraud probability: {fraud_prob:.1%}")
-    else:
-        insights.append(f"✓ Low fraud probability: {fraud_prob:.1%}")
     
     # Analyze amount distribution
     amt_probs = prediction_summary['raw_distributions']['amt'][0]

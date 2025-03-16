@@ -10,6 +10,8 @@ from preprocess import load_and_preprocess_data
 np.random.seed(42)
 tf.random.set_seed(42)
 
+SEQUENCE_LENGTH = 100
+
 def main(sample_size=1.0, fast_mode=False):    
     df, encoders = load_and_preprocess_data()
     
@@ -26,7 +28,7 @@ def main(sample_size=1.0, fast_mode=False):
         print(f"Sampled {len(sampled_cc_nums)} users ({sample_size*100:.1f}% of original dataset)")
         print(f"Sampled dataset shape: {df.shape}")
     
-    sequence_length = 10
+    sequence_length = SEQUENCE_LENGTH
     print(f"Preparing sequences with length {sequence_length}...")
     X_train, X_test, y_train, y_test, scaler, processor = prepare_all_sequences(df, sequence_length)
     
@@ -77,7 +79,7 @@ def main(sample_size=1.0, fast_mode=False):
                 print(f"  {feature}: {value}")
             
             print("\nFraud Probability:", 
-                  f"{results['prediction']['fraud_probability']:.2%}")
+                  f"{results['prediction']:.2%}")
             
             print("\nInsights:")
             for insight in results['insights']:

@@ -27,7 +27,6 @@ class TransactionFeatureProcessor:
         self.continuous_features = ['amt', 'lat', 'long', 'merch_lat', 'merch_long']
         self.discrete_features = ['hour', 'day', 'month', 'dayofweek']
         self.categorical_features = ['merchant_encoded', 'category_encoded']
-        self.target = 'is_fraud'
         
         self.discretizers = {}
         self.max_values = {}
@@ -76,7 +75,7 @@ def create_sequences(user_df, sequence_length=10, processor=None):
     features = [
         'amt', 'hour', 'day', 'month', 'dayofweek', 
         'merchant_encoded', 'category_encoded', 'lat', 'long',
-        'merch_lat', 'merch_long', 'is_fraud'
+        'merch_lat', 'merch_long'
     ]
     
     if len(user_df) <= sequence_length:
@@ -170,10 +169,7 @@ def create_lstm_model(input_shape, processor):
             activation='softmax', 
             name=feature
         )(x)
-    
-    # Fraud classification
-    outputs['is_fraud'] = Dense(2, activation='softmax', name='is_fraud')(x)
-    
+        
     # Create and compile model
     model = Model(inputs=input_layer, outputs=outputs)
     
