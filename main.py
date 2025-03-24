@@ -70,11 +70,14 @@ def main(sample_size=1.0, fast_mode=False):
             # Print prediction results
             print("\nPrediction Analysis:")
             print("-------------------")
+
             print("\nPredicted most likely values for next transaction:")
-            print("---------------------------------------------")
             for feature, value in results['prediction']['most_likely_values'].items():
-                print(f"  {feature}: {value}")
-                        
+                print(f"  {feature}: {value}")                        
+
+            print('\nReal values:')
+            for feature in results['prediction']['most_likely_values'].keys():
+                print(f"  {feature}: {last_transaction[feature]}")
 
             print('Real values:')
             for feature in results['prediction']['most_likely_values'].keys():
