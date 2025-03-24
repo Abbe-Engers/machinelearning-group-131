@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from model import load_lstm_model, TransactionFeatureProcessor
-
+from model import load_lstm_model
 from preprocess import load_and_preprocess_data
 
 def prepare_sequence(transactions, sequence_length, processor):
@@ -10,11 +9,8 @@ def prepare_sequence(transactions, sequence_length, processor):
     if len(transactions) < sequence_length:
         raise ValueError(f"Not enough transactions. Need at least {sequence_length}, got {len(transactions)}")
     
-    # Get the last sequence_length transactions
     recent_transactions = transactions.iloc[-sequence_length:]
-    sequence = recent_transactions[processor.continuous_features + 
-                                 processor.discrete_features + 
-                                 processor.categorical_features].values
+    sequence = recent_transactions[processor.all_features()].values
     
     return sequence.reshape(1, sequence_length, -1)
 
@@ -40,13 +36,17 @@ def plot_feature_distribution(processor, feature, prediction_probs, ax=None, his
     if feature in processor.continuous_features:
         # For continuous features, plot as a continuous distribution
         centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-        ax.bar(centers, probs, width=np.diff(bin_edges), alpha=0.6, label='Predicted')
+        if feature == 'amt':
+            ax.set_xscale('log')
+            ax.bar(centers, probs, width=np.diff(bin_edges), alpha=0.6, label='Predicted')
+        else:
+            ax.bar(centers, probs, width=np.diff(bin_edges), alpha=0.6, label='Predicted')
         
         # Plot historical distribution if available
         if historical_data is not None:
             hist_values = historical_data[feature].values
-            ax.hist(hist_values, bins=bin_edges, density=True, alpha=0.3, 
-                   color='gray', label='Historical', histtype='step')
+            ax.hist(hist_values, bins=bin_edges, density=True, alpha=1, 
+                   color='orange', label='Historical', histtype='step')
             
         ax.set_xlabel(f"{feature} value")
     else:
@@ -57,7 +57,7 @@ def plot_feature_distribution(processor, feature, prediction_probs, ax=None, his
         if historical_data is not None:
             hist_dist = historical_data[feature].value_counts(normalize=True)
             ax.plot(range(len(probs)), [hist_dist.get(i, 0) for i in range(len(probs))], 
-                   color='gray', alpha=0.3, label='Historical', marker='o')
+                   color='orange', alpha=1, label='Historical', marker='o')
             
         if feature in processor.discrete_features:
             if feature == 'hour':
@@ -83,9 +83,16 @@ def get_most_likely_value(processor, feature, prediction_probs):
         most_likely_bin = np.argmax(probs)
         lower_bound = bin_edges[most_likely_bin]
         upper_bound = bin_edges[most_likely_bin + 1]
-        return (lower_bound + upper_bound) / 2
+        center = (lower_bound + upper_bound) / 2
+        return {
+            'lower_bound': lower_bound,
+            'upper_bound': upper_bound,
+            'avg': center
+        }
     else:
-        return np.argmax(probs)
+        return {
+            'avg': np.argmax(probs)
+        }
 
 def calculate_anomaly_score(prediction_probs, actual_values, processor):
     """Calculate an anomaly score based on the probability distributions."""
@@ -132,16 +139,11 @@ def calculate_anomaly_score(prediction_probs, actual_values, processor):
 
 def predict_next_transaction(model, user_transactions, sequence_length, processor):
     """Predict the next transaction with probability distributions for each feature."""
-    # Prepare the sequence
     sequence = prepare_sequence(user_transactions, sequence_length, processor)
     
-    # Get predictions
     predictions = model.predict(sequence)
     
-    # Create visualization of the distributions
-    features_to_plot = (processor.continuous_features + 
-                       processor.discrete_features + 
-                       processor.categorical_features)
+    features_to_plot = processor.all_features()
     
     n_rows = (len(features_to_plot) + 2) // 3
     fig, axes = plt.subplots(n_rows, 3, figsize=(15, 4*n_rows))
@@ -188,15 +190,15 @@ def interpret_prediction(prediction_summary, processor, threshold=0.7):
     
     # Analyze time patterns
     hour_probs = prediction_summary['raw_distributions']['hour'][0]
-    most_likely_hour = prediction_summary['most_likely_values']['hour']
+    most_likely_hour = prediction_summary['most_likely_values']['hour']['avg']
     if most_likely_hour < 6 or most_likely_hour > 22:
         insights.append(f"⚠️ Unusual transaction hour: {int(most_likely_hour)}:00")
     
     # Analyze location
-    lat = prediction_summary['most_likely_values']['lat']
-    long = prediction_summary['most_likely_values']['long']
-    merch_lat = prediction_summary['most_likely_values']['merch_lat']
-    merch_long = prediction_summary['most_likely_values']['merch_long']
+    lat = prediction_summary['most_likely_values']['lat']['avg']
+    long = prediction_summary['most_likely_values']['long']['avg']
+    merch_lat = prediction_summary['most_likely_values']['merch_lat']['avg']
+    merch_long = prediction_summary['most_likely_values']['merch_long']['avg']
     
     # Calculate distance between user and merchant
     from math import radians, sin, cos, sqrt, atan2

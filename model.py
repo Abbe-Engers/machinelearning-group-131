@@ -195,8 +195,6 @@ def train_lstm_model(model, X_train, y_train, X_test, y_test, fast_mode=False):
         restore_best_weights=True
     )
     
-    # Convert y_train and y_test to the format expected by the model
-    # Fix the shape mismatch by ensuring each feature array has the correct dimensions
     y_train_dict = {}
     for feature in y_train[0].keys():
         stacked_data = np.stack([y[feature] for y in y_train])
@@ -225,10 +223,8 @@ def train_lstm_model(model, X_train, y_train, X_test, y_test, fast_mode=False):
         verbose=1
     )
     
-    # Plot training history
     plt.figure(figsize=(15, 10))
     
-    # Plot loss
     plt.subplot(2, 1, 1)
     for output in model.output_names:
         plt.plot(history.history[f'{output}_loss'], 

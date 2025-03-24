@@ -40,7 +40,6 @@ def main(sample_size=1.0, fast_mode=False):
     lstm_model = create_lstm_model(input_shape, processor)
     lstm_model = train_lstm_model(lstm_model, X_train, y_train, X_test, y_test, fast_mode=fast_mode)
     
-    # Save model and preprocessing objects
     print("\nSaving model and preprocessing objects...")
     os.makedirs('models', exist_ok=True)
     lstm_model.save('models/lstm_transaction_model.h5')
@@ -48,26 +47,22 @@ def main(sample_size=1.0, fast_mode=False):
     
     print("Model and preprocessing objects saved.")
     
-    # Generate sample prediction
     if len(df) > 0:
         print("\nGenerating sample prediction...")
         sample_cc_num = df['cc_num'].iloc[0]
         user_transactions = df[df['cc_num'] == sample_cc_num]
         
         if len(user_transactions) > sequence_length:
-            # Get the last transaction for comparison
             last_transaction = user_transactions.iloc[-1].to_dict()
             
-            # Predict and analyze
             results = predict_and_analyze(
                 lstm_model,
-                user_transactions.iloc[:-1],  # Use all but last transaction
+                user_transactions.iloc[:-1],
                 sequence_length,
                 processor,
                 actual_transaction=last_transaction
             )
             
-            # Print prediction results
             print("\nPrediction Analysis:")
             print("-------------------")
 
@@ -93,7 +88,6 @@ def main(sample_size=1.0, fast_mode=False):
                 for feature, score in results['feature_scores'].items():
                     print(f"  {feature}: {score:.2f}")
             
-            # Save prediction visualization
             print("\nPrediction distribution plots saved to 'prediction_distributions.png'")
 
 if __name__ == "__main__":    
