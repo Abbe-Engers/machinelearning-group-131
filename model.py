@@ -178,8 +178,7 @@ def train_lstm_model(model, X_train, y_train, X_test, y_test, fast_mode=False):
     num_samples = X_train.shape[0]
     
     if fast_mode:
-        epochs = 1
-        # epochs = 20
+        epochs = 20
         batch_size = min(32, max(8, num_samples // 100))
         patience = 5
     else:
