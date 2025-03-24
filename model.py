@@ -30,9 +30,11 @@ class TransactionFeatureProcessor:
         
         self.discretizers = {}
         self.max_values = {}
+
+    def all_features(self):
+        return self.continuous_features + self.discrete_features + self.categorical_features
         
     def fit(self, data):
-        # Initialize discretizers for continuous features
         for feature in self.continuous_features:
             self.discretizers[feature] = KBinsDiscretizer(
                 n_bins=NUM_BINS[feature], 
@@ -42,11 +44,9 @@ class TransactionFeatureProcessor:
             feature_data = data[feature].values.reshape(-1, 1)
             self.discretizers[feature].fit(feature_data)
         
-        # Store max values for discrete features
         for feature in self.discrete_features:
             self.max_values[feature] = int(data[feature].max()) + 1
             
-        # Store max values for categorical features
         for feature in self.categorical_features:
             self.max_values[feature] = int(data[feature].max()) + 1
     
@@ -72,11 +72,7 @@ class TransactionFeatureProcessor:
             )
 
 def create_sequences(user_df, sequence_length=10, processor=None):
-    features = [
-        'amt', 'hour', 'day', 'month', 'dayofweek', 
-        'merchant_encoded', 'category_encoded', 'lat', 'long',
-        'merch_lat', 'merch_long'
-    ]
+    features = processor.all_features() if processor else []
     
     if len(user_df) <= sequence_length:
         return None, None
@@ -88,7 +84,6 @@ def create_sequences(user_df, sequence_length=10, processor=None):
         
         X.append(sequence.values)
         
-        # Transform each feature in the target to its categorical representation
         target_transformed = {
             feature: processor.transform_feature(
                 target.to_frame().T, 
@@ -100,7 +95,6 @@ def create_sequences(user_df, sequence_length=10, processor=None):
     return np.array(X), y
 
 def prepare_all_sequences(df, sequence_length=10):
-    # Initialize and fit the feature processor
     processor = TransactionFeatureProcessor()
     processor.fit(df)
     

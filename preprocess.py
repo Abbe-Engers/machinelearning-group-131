@@ -18,18 +18,17 @@ def load_and_preprocess_data():
     df['day'] = df['trans_date_trans_time'].dt.day
     df['month'] = df['trans_date_trans_time'].dt.month
     df['dayofweek'] = df['trans_date_trans_time'].dt.dayofweek
+    df = df[df['is_fraud'] == 0]
     
     df['dob'] = pd.to_datetime(df['dob'])
     df['age'] = (datetime.now() - df['dob']).dt.days // 365
     
     categorical_cols = ['merchant', 'category', 'gender', 'city', 'state', 'job']
-    encoders = {}
     
     for col in categorical_cols:
         encoder = LabelEncoder()
         df[f'{col}_encoded'] = encoder.fit_transform(df[col])
-        encoders[col] = encoder
     
     df = df.sort_values(['cc_num', 'trans_date_trans_time'])
     
-    return df, encoders
+    return df

@@ -10,22 +10,19 @@ from preprocess import load_and_preprocess_data
 np.random.seed(42)
 tf.random.set_seed(42)
 
-SEQUENCE_LENGTH = 100
+SEQUENCE_LENGTH = 10
 
 def main(sample_size=1.0, fast_mode=False):    
-    df, encoders = load_and_preprocess_data()
+    df = load_and_preprocess_data()
     
     if sample_size < 1.0:
         unique_cc_nums = df['cc_num'].unique()
-        
-        sampled_cc_nums = np.random.choice(
-            unique_cc_nums, 
-            size=int(len(unique_cc_nums) * sample_size), 
-            replace=False
-        )
+
+        cc_nums_amount = int(len(unique_cc_nums) * sample_size)
+        sampled_cc_nums = unique_cc_nums[:cc_nums_amount]
         
         df = df[df['cc_num'].isin(sampled_cc_nums)]
-        print(f"Sampled {len(sampled_cc_nums)} users ({sample_size*100:.1f}% of original dataset)")
+        print(f"Sampled {len(cc_nums_amount)} users ({sample_size*100:.1f}% of original dataset)")
         print(f"Sampled dataset shape: {df.shape}")
     
     sequence_length = SEQUENCE_LENGTH
@@ -78,6 +75,8 @@ def main(sample_size=1.0, fast_mode=False):
             for feature, value in results['prediction']['most_likely_values'].items():
                 print(f"  {feature}: {value}")
             
+            print(results)
+
             print("\nFraud Probability:", 
                   f"{results['prediction']:.2%}")
             

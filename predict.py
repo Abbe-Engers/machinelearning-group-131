@@ -30,7 +30,7 @@ def get_feature_bins(processor, feature, prediction_probs):
     else:
         return None, prediction_probs[feature][0]
 
-def plot_feature_distribution(processor, feature, prediction_probs, ax=None):
+def plot_feature_distribution(processor, feature, prediction_probs, ax=None, historical_data=None):
     """Plot the probability distribution for a feature."""
     if ax is None:
         _, ax = plt.subplots(figsize=(10, 4))
@@ -40,11 +40,25 @@ def plot_feature_distribution(processor, feature, prediction_probs, ax=None):
     if feature in processor.continuous_features:
         # For continuous features, plot as a continuous distribution
         centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-        ax.bar(centers, probs, width=np.diff(bin_edges), alpha=0.6)
+        ax.bar(centers, probs, width=np.diff(bin_edges), alpha=0.6, label='Predicted')
+        
+        # Plot historical distribution if available
+        if historical_data is not None:
+            hist_values = historical_data[feature].values
+            ax.hist(hist_values, bins=bin_edges, density=True, alpha=0.3, 
+                   color='gray', label='Historical', histtype='step')
+            
         ax.set_xlabel(f"{feature} value")
     else:
         # For discrete features, plot as a bar chart
-        ax.bar(range(len(probs)), probs, alpha=0.6)
+        ax.bar(range(len(probs)), probs, alpha=0.6, label='Predicted')
+        
+        # Plot historical distribution if available
+        if historical_data is not None:
+            hist_dist = historical_data[feature].value_counts(normalize=True)
+            ax.plot(range(len(probs)), [hist_dist.get(i, 0) for i in range(len(probs))], 
+                   color='gray', alpha=0.3, label='Historical', marker='o')
+            
         if feature in processor.discrete_features:
             if feature == 'hour':
                 ax.set_xticks(range(24))
@@ -58,6 +72,7 @@ def plot_feature_distribution(processor, feature, prediction_probs, ax=None):
     
     ax.set_ylabel('Probability')
     ax.set_title(f'{feature} Distribution')
+    ax.legend()
     return ax
 
 def get_most_likely_value(processor, feature, prediction_probs):
@@ -133,7 +148,8 @@ def predict_next_transaction(model, user_transactions, sequence_length, processo
     axes = axes.flatten()
     
     for i, feature in enumerate(features_to_plot):
-        plot_feature_distribution(processor, feature, predictions, ax=axes[i])
+        plot_feature_distribution(processor, feature, predictions, ax=axes[i], 
+                                historical_data=user_transactions)
     
     # Hide empty subplots
     for j in range(i+1, len(axes)):
@@ -148,7 +164,6 @@ def predict_next_transaction(model, user_transactions, sequence_length, processo
         feature: get_most_likely_value(processor, feature, predictions)
         for feature in features_to_plot
     }
-
     
     # Create a summary dictionary
     prediction_summary = {
