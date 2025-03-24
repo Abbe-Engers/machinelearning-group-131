@@ -22,12 +22,12 @@ def main(sample_size=1.0, fast_mode=False):
         sampled_cc_nums = unique_cc_nums[:cc_nums_amount]
         
         df = df[df['cc_num'].isin(sampled_cc_nums)]
-        print(f"Sampled {len(cc_nums_amount)} users ({sample_size*100:.1f}% of original dataset)")
+        print(f"Sampled {cc_nums_amount} users ({sample_size*100:.1f}% of original dataset)")
         print(f"Sampled dataset shape: {df.shape}")
     
     sequence_length = SEQUENCE_LENGTH
     print(f"Preparing sequences with length {sequence_length}...")
-    X_train, X_test, y_train, y_test, scaler, processor = prepare_all_sequences(df, sequence_length)
+    X_train, X_test, y_train, y_test, processor = prepare_all_sequences(df, sequence_length)
     
     print(f"Training data shape: {X_train.shape}")
     print("Training target shapes:")
@@ -44,7 +44,6 @@ def main(sample_size=1.0, fast_mode=False):
     print("\nSaving model and preprocessing objects...")
     os.makedirs('models', exist_ok=True)
     lstm_model.save('models/lstm_transaction_model.h5')
-    joblib.dump(scaler, 'models/transaction_scaler.joblib')
     joblib.dump(processor, 'models/transaction_processor.joblib')
     
     print("Model and preprocessing objects saved.")
@@ -71,15 +70,16 @@ def main(sample_size=1.0, fast_mode=False):
             # Print prediction results
             print("\nPrediction Analysis:")
             print("-------------------")
-            print("Most likely values:")
+            print("\nPredicted most likely values for next transaction:")
+            print("---------------------------------------------")
             for feature, value in results['prediction']['most_likely_values'].items():
                 print(f"  {feature}: {value}")
-            
-            print(results)
+                        
 
-            print("\nFraud Probability:", 
-                  f"{results['prediction']:.2%}")
-            
+            print('Real values:')
+            for feature in results['prediction']['most_likely_values'].keys():
+                print(f"  {feature}: {last_transaction[feature]}")
+
             print("\nInsights:")
             for insight in results['insights']:
                 print(f"  {insight}")

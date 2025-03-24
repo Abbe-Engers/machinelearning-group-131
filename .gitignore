@@ -4,3 +4,12 @@ venv/
 *.pyd
 *.pyw
 *.pyz
+
+*.png
+*.h5
+*.joblib
+*.csv
+*.json
+*.jsonl
+*.jsonl.gz
+*.jsonl.gz.part

@@ -1,6 +1,6 @@
 import joblib
 import numpy as np
-from sklearn.preprocessing import StandardScaler, KBinsDiscretizer
+from sklearn.preprocessing import KBinsDiscretizer
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.models import Sequential, Model, load_model
@@ -107,13 +107,6 @@ def prepare_all_sequences(df, sequence_length=10):
     
     X = np.vstack(all_X)
     
-    # Normalize the input sequences
-    scaler = StandardScaler()
-    X_shape = X.shape
-    X_reshaped = X.reshape(-1, X.shape[-1])
-    X_scaled = scaler.fit_transform(X_reshaped)
-    X = X_scaled.reshape(X_shape)
-    
     # Split the data
     indices = np.arange(len(X))
     train_idx, test_idx = train_test_split(indices, test_size=0.2, random_state=42)
@@ -122,7 +115,7 @@ def prepare_all_sequences(df, sequence_length=10):
     y_train = [all_y[i] for i in train_idx]
     y_test = [all_y[i] for i in test_idx]
     
-    return X_train, X_test, y_train, y_test, scaler, processor
+    return X_train, X_test, y_train, y_test, processor
 
 def create_lstm_model(input_shape, processor):
     # Create input layer
@@ -264,25 +257,19 @@ def train_lstm_model(model, X_train, y_train, X_test, y_test, fast_mode=False):
     
     return model
 
-def load_lstm_model(model_path='models/lstm_transaction_model.h5', 
-                   scaler_path='models/transaction_scaler.joblib', 
-                   processor_path='models/transaction_processor.joblib'):
+def load_lstm_model(model_path='models/lstm_transaction_model.h5', processor_path='models/transaction_processor.joblib'):
     print(f"Loading model from {model_path}...")
     
     if not os.path.exists(model_path):
         print(f"Error: Model file {model_path} not found.")
-        return None
-    if not os.path.exists(scaler_path):
-        print(f"Error: Scaler file {scaler_path} not found.")
-        return None
+        return None, None
     if not os.path.exists(processor_path):
         print(f"Error: Processor file {processor_path} not found.")
-        return None
+        return None, None
 
     custom_objects = {'categorical_crossentropy': tf.keras.losses.CategoricalCrossentropy()}
     
     lstm_model = load_model(model_path, custom_objects=custom_objects)
-    scaler = joblib.load(scaler_path)
     processor = joblib.load(processor_path)
 
-    return lstm_model, scaler, processor
+    return lstm_model, processor

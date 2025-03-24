@@ -253,8 +253,8 @@ def predict_and_analyze(model, user_transactions, sequence_length, processor,
         'feature_scores': feature_scores if actual_transaction is not None else None
     }
 
-def load_model_and_predict_all(model_path='models/lstm_transaction_model.h5', scaler_path='models/transaction_scaler.joblib', encoders_path='models/categorical_encoders.joblib'):
-    lstm_model, scaler, encoders = load_lstm_model(model_path, scaler_path, encoders_path)
+def load_model_and_predict_all(model_path='models/lstm_transaction_model.h5', encoders_path='models/categorical_encoders.joblib'):
+    lstm_model, encoders = load_lstm_model(model_path, encoders_path)
     
     try:
         df, _ = load_and_preprocess_data()
@@ -275,7 +275,7 @@ def load_model_and_predict_all(model_path='models/lstm_transaction_model.h5', sc
         if len(user_transactions) > sequence_length:
             try:
                 next_transaction = predict_and_analyze(
-                    lstm_model, user_transactions, sequence_length, scaler, encoders
+                    lstm_model, user_transactions, sequence_length, encoders
                 )
                 
                 next_transaction['cc_num'] = cc_num
