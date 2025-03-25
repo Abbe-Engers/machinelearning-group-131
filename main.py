@@ -10,20 +10,10 @@ from preprocess import load_and_preprocess_data
 np.random.seed(42)
 tf.random.set_seed(42)
 
-SEQUENCE_LENGTH = 10
+SEQUENCE_LENGTH = 100
 
 def main(sample_size=1.0, fast_mode=False):    
-    df = load_and_preprocess_data()
-    
-    if sample_size < 1.0:
-        unique_cc_nums = df['cc_num'].unique()
-
-        cc_nums_amount = int(len(unique_cc_nums) * sample_size)
-        sampled_cc_nums = unique_cc_nums[:cc_nums_amount]
-        
-        df = df[df['cc_num'].isin(sampled_cc_nums)]
-        print(f"Sampled {cc_nums_amount} users ({sample_size*100:.1f}% of original dataset)")
-        print(f"Sampled dataset shape: {df.shape}")
+    df = load_and_preprocess_data(sample_size)
     
     sequence_length = SEQUENCE_LENGTH
     print(f"Preparing sequences with length {sequence_length}...")
@@ -74,10 +64,6 @@ def main(sample_size=1.0, fast_mode=False):
             for feature in results['prediction']['most_likely_values'].keys():
                 print(f"  {feature}: {last_transaction[feature]}")
 
-            print('Real values:')
-            for feature in results['prediction']['most_likely_values'].keys():
-                print(f"  {feature}: {last_transaction[feature]}")
-
             print("\nInsights:")
             for insight in results['insights']:
                 print(f"  {insight}")
@@ -91,7 +77,7 @@ def main(sample_size=1.0, fast_mode=False):
             print("\nPrediction distribution plots saved to 'prediction_distributions.png'")
 
 if __name__ == "__main__":    
-    sample_size = 0.1
+    sample_size = 0.2
     fast_mode = True
     
     print(f"Training on {sample_size*100:.1f}% of the original dataset with fast_mode={fast_mode}")
