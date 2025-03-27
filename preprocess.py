@@ -3,13 +3,14 @@ import kagglehub
 from datetime import datetime
 from sklearn.preprocessing import LabelEncoder
 
-def load_and_preprocess_data(sample_size=1.0):
+def load_and_preprocess_data(path=None):
     print("Loading and preprocessing data...")
     
-    path = kagglehub.dataset_download("kartik2112/fraud-detection")
+    # path = kagglehub.dataset_download("kartik2112/fraud-detection")
     
-    df = pd.read_csv(path + "/fraudTrain.csv")
-    
+    # df = pd.read_csv(path + "/fraudTrain.csv")
+    df = pd.read_csv(path)
+
     print(f"Class distribution:\n{df['is_fraud'].value_counts()}")
     print(f"Fraud percentage: {df['is_fraud'].mean() * 100:.2f}%")
     
@@ -23,21 +24,13 @@ def load_and_preprocess_data(sample_size=1.0):
     df['age'] = (datetime.now() - df['dob']).dt.days // 365
     
     categorical_cols = ['merchant', 'category', 'gender', 'city', 'state', 'job']
+    encoders = {}
     
     for col in categorical_cols:
         encoder = LabelEncoder()
         df[f'{col}_encoded'] = encoder.fit_transform(df[col])
+        encoders[col] = encoder
     
     df = df.sort_values(['cc_num', 'trans_date_trans_time'])
-
-    if sample_size < 1.0:
-        unique_cc_nums = df['cc_num'].unique()
-
-        cc_nums_amount = int(len(unique_cc_nums) * sample_size)
-        sampled_cc_nums = unique_cc_nums[:cc_nums_amount]
-        
-        df = df[df['cc_num'].isin(sampled_cc_nums)]
-        print(f"Sampled {cc_nums_amount} users ({sample_size*100:.1f}% of original dataset)")
-        print(f"Sampled dataset shape: {df.shape}")
     
-    return df
+    return df, encoders
