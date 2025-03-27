@@ -115,6 +115,7 @@ def get_most_likely_value(processor, feature, prediction_probs):
 def calculate_anomaly_score(prediction_probs, actual_values, processor):
     """Calculate an anomaly score based on the probability distributions."""
     feature_scores = {}
+    feature_probabilities = {}
     
     for feature in processor.continuous_features + processor.discrete_features + processor.categorical_features:
         if feature in actual_values:
@@ -132,8 +133,14 @@ def calculate_anomaly_score(prediction_probs, actual_values, processor):
                 # For discrete features, use the probability directly
                 prob = probs[int(actual)]
             
+            # Store the probability for this feature
+            feature_probabilities[feature] = prob
+            
             # Convert probability to anomaly score (0 = normal, 1 = anomalous)
             feature_scores[feature] = 1 - prob
+    
+    # Calculate total probability of the transaction falling within the pattern
+    total_probability = np.prod(list(feature_probabilities.values()))
     
     # Overall anomaly score is the weighted average of feature scores
     weights = {
@@ -153,7 +160,7 @@ def calculate_anomaly_score(prediction_probs, actual_values, processor):
     total_score = sum(feature_scores[f] * weights[f] for f in feature_scores)
     total_weight = sum(weights[f] for f in feature_scores)
     
-    return total_score / total_weight, feature_scores
+    return total_score / total_weight, feature_scores, feature_probabilities, total_probability
 
 def predict_next_transaction(model, user_transactions, sequence_length, processor, fraud_transactions=[]):
     """Predict the next transaction with probability distributions for each feature."""
@@ -255,7 +262,7 @@ def predict_and_analyze(model, user_transactions, sequence_length, processor, ac
     
     # If we have the actual transaction, calculate anomaly scores
     if actual_transaction is not None:
-        anomaly_score, feature_scores = calculate_anomaly_score(
+        anomaly_score, feature_scores, feature_probabilities, total_probability = calculate_anomaly_score(
             prediction['raw_distributions'],
             actual_transaction,
             processor
@@ -268,12 +275,20 @@ def predict_and_analyze(model, user_transactions, sequence_length, processor, ac
             for feature, score in feature_scores.items():
                 if score > 0.8:
                     insights.append(f"⚠️ Unusual {feature}: {score:.2f}")
+        
+        # Add probability insights
+        insights.append(f"📊 Total probability of transaction falling within pattern: {total_probability:.4f}")
+        for feature, prob in feature_probabilities.items():
+            if prob < 0.1:  # Very low probability features
+                insights.append(f"⚠️ Low probability for {feature}: {prob:.4f}")
     
     return {
         'prediction': prediction,
         'insights': insights,
         'anomaly_score': anomaly_score if actual_transaction is not None else None,
-        'feature_scores': feature_scores if actual_transaction is not None else None
+        'feature_scores': feature_scores if actual_transaction is not None else None,
+        'feature_probabilities': feature_probabilities if actual_transaction is not None else None,
+        'total_probability': total_probability if actual_transaction is not None else None
     }
 
 def load_model_and_predict_all(model_path='models/lstm_transaction_model.h5', encoders_path='models/categorical_encoders.joblib'):
