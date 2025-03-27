@@ -26,7 +26,7 @@ def get_feature_bins(processor, feature, prediction_probs):
     else:
         return None, prediction_probs[feature][0]
 
-def plot_feature_distribution(processor, feature, prediction_probs, ax=None, historical_data=None):
+def plot_feature_distribution(processor, feature, prediction_probs, ax=None, historical_data=None, fraud_data=None):
     """Plot the probability distribution for a feature."""
     if ax is None:
         _, ax = plt.subplots(figsize=(10, 4))
@@ -48,6 +48,15 @@ def plot_feature_distribution(processor, feature, prediction_probs, ax=None, his
             ax.hist(hist_values, bins=bin_edges, density=True, alpha=1, 
                    color='orange', label='Historical', histtype='step')
             
+        # Plot fraud distribution if available
+        if fraud_data is not None and len(fraud_data) > 0:
+            fraud_values = fraud_data[feature].values
+            # Scale fraud histogram to match the height of the predicted distribution
+            hist, _ = np.histogram(fraud_values, bins=bin_edges, density=True)
+            scale_factor = np.max(probs) / np.max(hist) if np.max(hist) > 0 else 1
+            ax.hist(fraud_values, bins=bin_edges, density=True, alpha=0.6,
+                   color='red', label='Fraud', histtype='step', weights=np.ones_like(fraud_values) * scale_factor)
+            
         ax.set_xlabel(f"{feature} value")
     else:
         # For discrete features, plot as a bar chart
@@ -58,6 +67,15 @@ def plot_feature_distribution(processor, feature, prediction_probs, ax=None, his
             hist_dist = historical_data[feature].value_counts(normalize=True)
             ax.plot(range(len(probs)), [hist_dist.get(i, 0) for i in range(len(probs))], 
                    color='orange', alpha=1, label='Historical', marker='o')
+            
+        # Plot fraud distribution if available
+        if fraud_data is not None and len(fraud_data) > 0:
+            fraud_dist = fraud_data[feature].value_counts(normalize=True)
+            # Scale fraud distribution to match the height of the predicted distribution
+            fraud_probs = [fraud_dist.get(i, 0) for i in range(len(probs))]
+            scale_factor = np.max(probs) / np.max(fraud_probs) if np.max(fraud_probs) > 0 else 1
+            ax.plot(range(len(probs)), [p * scale_factor for p in fraud_probs],
+                   color='red', alpha=0.6, label='Fraud', marker='o')
             
         if feature in processor.discrete_features:
             if feature == 'hour':
@@ -137,13 +155,16 @@ def calculate_anomaly_score(prediction_probs, actual_values, processor):
     
     return total_score / total_weight, feature_scores
 
-def predict_next_transaction(model, user_transactions, sequence_length, processor):
+def predict_next_transaction(model, user_transactions, sequence_length, processor, fraud_transactions=[]):
     """Predict the next transaction with probability distributions for each feature."""
     sequence = prepare_sequence(user_transactions, sequence_length, processor)
     
     predictions = model.predict(sequence)
     
     features_to_plot = processor.all_features()
+    features_to_plot.remove('day')
+    features_to_plot.remove('month')
+    features_to_plot.remove('dayofweek')
     
     n_rows = (len(features_to_plot) + 2) // 3
     fig, axes = plt.subplots(n_rows, 3, figsize=(15, 4*n_rows))
@@ -151,7 +172,8 @@ def predict_next_transaction(model, user_transactions, sequence_length, processo
     
     for i, feature in enumerate(features_to_plot):
         plot_feature_distribution(processor, feature, predictions, ax=axes[i], 
-                                historical_data=user_transactions)
+                                historical_data=user_transactions,
+                                fraud_data=fraud_transactions)
     
     # Hide empty subplots
     for j in range(i+1, len(axes)):
@@ -222,12 +244,11 @@ def interpret_prediction(prediction_summary, processor, threshold=0.7):
     
     return insights
 
-def predict_and_analyze(model, user_transactions, sequence_length, processor, 
-                       actual_transaction=None):
+def predict_and_analyze(model, user_transactions, sequence_length, processor, actual_transaction=None, fraud_transactions=[]):
     """Predict next transaction and provide comprehensive analysis."""
     
     # Get prediction with distributions
-    prediction = predict_next_transaction(model, user_transactions, sequence_length, processor)
+    prediction = predict_next_transaction(model, user_transactions, sequence_length, processor, fraud_transactions)
     
     # Get interpretation insights
     insights = interpret_prediction(prediction, processor)

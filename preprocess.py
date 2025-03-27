@@ -18,7 +18,6 @@ def load_and_preprocess_data(sample_size=1.0):
     df['day'] = df['trans_date_trans_time'].dt.day
     df['month'] = df['trans_date_trans_time'].dt.month
     df['dayofweek'] = df['trans_date_trans_time'].dt.dayofweek
-    df = df[df['is_fraud'] == 0]
     
     df['dob'] = pd.to_datetime(df['dob'])
     df['age'] = (datetime.now() - df['dob']).dt.days // 365
