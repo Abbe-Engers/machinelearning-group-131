@@ -1,8 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from model import load_lstm_model, TransactionFeatureProcessor
-
+from model import load_lstm_model
 from preprocess import load_and_preprocess_data
 
 def prepare_sequence(transactions, sequence_length, processor):
@@ -10,12 +9,8 @@ def prepare_sequence(transactions, sequence_length, processor):
     if len(transactions) < sequence_length:
         raise ValueError(f"Not enough transactions. Need at least {sequence_length}, got {len(transactions)}")
     
-    # Get the last sequence_length transactions
     recent_transactions = transactions.iloc[-sequence_length:]
-    sequence = recent_transactions[processor.continuous_features + 
-                                 processor.discrete_features + 
-                                 processor.categorical_features + 
-                                 [processor.target]].values
+    sequence = recent_transactions[processor.all_features()].values
     
     return sequence.reshape(1, sequence_length, -1)
 
@@ -31,7 +26,7 @@ def get_feature_bins(processor, feature, prediction_probs):
     else:
         return None, prediction_probs[feature][0]
 
-def plot_feature_distribution(processor, feature, prediction_probs, ax=None):
+def plot_feature_distribution(processor, feature, prediction_probs, ax=None, historical_data=None, fraud_data=None):
     """Plot the probability distribution for a feature."""
     if ax is None:
         _, ax = plt.subplots(figsize=(10, 4))
@@ -41,11 +36,47 @@ def plot_feature_distribution(processor, feature, prediction_probs, ax=None):
     if feature in processor.continuous_features:
         # For continuous features, plot as a continuous distribution
         centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-        ax.bar(centers, probs, width=np.diff(bin_edges), alpha=0.6)
+        if feature == 'amt':
+            ax.set_xscale('log')
+            ax.bar(centers, probs, width=np.diff(bin_edges), alpha=0.6, label='Predicted')
+        else:
+            ax.bar(centers, probs, width=np.diff(bin_edges), alpha=0.6, label='Predicted')
+        
+        # Plot historical distribution if available
+        if historical_data is not None:
+            hist_values = historical_data[feature].values
+            ax.hist(hist_values, bins=bin_edges, density=True, alpha=1, 
+                   color='orange', label='Historical', histtype='step')
+            
+        # Plot fraud distribution if available
+        if fraud_data is not None and len(fraud_data) > 0:
+            fraud_values = fraud_data[feature].values
+            # Scale fraud histogram to match the height of the predicted distribution
+            hist, _ = np.histogram(fraud_values, bins=bin_edges, density=True)
+            scale_factor = np.max(probs) / np.max(hist) if np.max(hist) > 0 else 1
+            ax.hist(fraud_values, bins=bin_edges, density=True, alpha=0.6,
+                   color='red', label='Fraud', histtype='step', weights=np.ones_like(fraud_values) * scale_factor)
+            
         ax.set_xlabel(f"{feature} value")
     else:
         # For discrete features, plot as a bar chart
-        ax.bar(range(len(probs)), probs, alpha=0.6)
+        ax.bar(range(len(probs)), probs, alpha=0.6, label='Predicted')
+        
+        # Plot historical distribution if available
+        if historical_data is not None:
+            hist_dist = historical_data[feature].value_counts(normalize=True)
+            ax.plot(range(len(probs)), [hist_dist.get(i, 0) for i in range(len(probs))], 
+                   color='orange', alpha=1, label='Historical', marker='o')
+            
+        # Plot fraud distribution if available
+        if fraud_data is not None and len(fraud_data) > 0:
+            fraud_dist = fraud_data[feature].value_counts(normalize=True)
+            # Scale fraud distribution to match the height of the predicted distribution
+            fraud_probs = [fraud_dist.get(i, 0) for i in range(len(probs))]
+            scale_factor = np.max(probs) / np.max(fraud_probs) if np.max(fraud_probs) > 0 else 1
+            ax.plot(range(len(probs)), [p * scale_factor for p in fraud_probs],
+                   color='red', alpha=0.6, label='Fraud', marker='o')
+            
         if feature in processor.discrete_features:
             if feature == 'hour':
                 ax.set_xticks(range(24))
@@ -59,6 +90,7 @@ def plot_feature_distribution(processor, feature, prediction_probs, ax=None):
     
     ax.set_ylabel('Probability')
     ax.set_title(f'{feature} Distribution')
+    ax.legend()
     return ax
 
 def get_most_likely_value(processor, feature, prediction_probs):
@@ -69,13 +101,21 @@ def get_most_likely_value(processor, feature, prediction_probs):
         most_likely_bin = np.argmax(probs)
         lower_bound = bin_edges[most_likely_bin]
         upper_bound = bin_edges[most_likely_bin + 1]
-        return (lower_bound + upper_bound) / 2
+        center = (lower_bound + upper_bound) / 2
+        return {
+            'lower_bound': lower_bound,
+            'upper_bound': upper_bound,
+            'avg': center
+        }
     else:
-        return np.argmax(probs)
+        return {
+            'avg': np.argmax(probs)
+        }
 
 def calculate_anomaly_score(prediction_probs, actual_values, processor):
     """Calculate an anomaly score based on the probability distributions."""
     feature_scores = {}
+    feature_probabilities = {}
     
     for feature in processor.continuous_features + processor.discrete_features + processor.categorical_features:
         if feature in actual_values:
@@ -93,8 +133,14 @@ def calculate_anomaly_score(prediction_probs, actual_values, processor):
                 # For discrete features, use the probability directly
                 prob = probs[int(actual)]
             
+            # Store the probability for this feature
+            feature_probabilities[feature] = prob
+            
             # Convert probability to anomaly score (0 = normal, 1 = anomalous)
             feature_scores[feature] = 1 - prob
+    
+    # Calculate total probability of the transaction falling within the pattern
+    total_probability = np.prod(list(feature_probabilities.values()))
     
     # Overall anomaly score is the weighted average of feature scores
     weights = {
@@ -106,34 +152,35 @@ def calculate_anomaly_score(prediction_probs, actual_values, processor):
         'merchant_encoded': 0.2,  # Merchant is important
         'category_encoded': 0.1,
         'lat': 0.05,
-        'long': 0.05
+        'long': 0.05,
+        'merch_lat': 0.05,
+        'merch_long': 0.05
     }
     
     total_score = sum(feature_scores[f] * weights[f] for f in feature_scores)
     total_weight = sum(weights[f] for f in feature_scores)
     
-    return total_score / total_weight, feature_scores
+    return total_score / total_weight, feature_scores, feature_probabilities, total_probability
 
-def predict_next_transaction(model, user_transactions, sequence_length, processor):
+def predict_next_transaction(model, user_transactions, sequence_length, processor, fraud_transactions=[]):
     """Predict the next transaction with probability distributions for each feature."""
-    # Prepare the sequence
     sequence = prepare_sequence(user_transactions, sequence_length, processor)
     
-    # Get predictions
     predictions = model.predict(sequence)
     
-    # Create visualization of the distributions
-    features_to_plot = (processor.continuous_features + 
-                       processor.discrete_features + 
-                       processor.categorical_features + 
-                       [processor.target])
+    features_to_plot = processor.all_features()
+    features_to_plot.remove('day')
+    features_to_plot.remove('month')
+    features_to_plot.remove('dayofweek')
     
     n_rows = (len(features_to_plot) + 2) // 3
     fig, axes = plt.subplots(n_rows, 3, figsize=(15, 4*n_rows))
     axes = axes.flatten()
     
     for i, feature in enumerate(features_to_plot):
-        plot_feature_distribution(processor, feature, predictions, ax=axes[i])
+        plot_feature_distribution(processor, feature, predictions, ax=axes[i], 
+                                historical_data=user_transactions,
+                                fraud_data=fraud_transactions)
     
     # Hide empty subplots
     for j in range(i+1, len(axes)):
@@ -149,13 +196,9 @@ def predict_next_transaction(model, user_transactions, sequence_length, processo
         for feature in features_to_plot
     }
     
-    # Calculate fraud probability
-    fraud_prob = predictions['is_fraud'][0][1]
-    
     # Create a summary dictionary
     prediction_summary = {
         'most_likely_values': most_likely_values,
-        'fraud_probability': fraud_prob,
         'raw_distributions': predictions
     }
     
@@ -164,13 +207,6 @@ def predict_next_transaction(model, user_transactions, sequence_length, processo
 def interpret_prediction(prediction_summary, processor, threshold=0.7):
     """Interpret the prediction results and provide insights."""
     insights = []
-    
-    # Analyze fraud probability
-    fraud_prob = prediction_summary['fraud_probability']
-    if fraud_prob > threshold:
-        insights.append(f"⚠️ High fraud probability: {fraud_prob:.1%}")
-    else:
-        insights.append(f"✓ Low fraud probability: {fraud_prob:.1%}")
     
     # Analyze amount distribution
     amt_probs = prediction_summary['raw_distributions']['amt'][0]
@@ -183,15 +219,15 @@ def interpret_prediction(prediction_summary, processor, threshold=0.7):
     
     # Analyze time patterns
     hour_probs = prediction_summary['raw_distributions']['hour'][0]
-    most_likely_hour = prediction_summary['most_likely_values']['hour']
+    most_likely_hour = prediction_summary['most_likely_values']['hour']['avg']
     if most_likely_hour < 6 or most_likely_hour > 22:
         insights.append(f"⚠️ Unusual transaction hour: {int(most_likely_hour)}:00")
     
     # Analyze location
-    lat = prediction_summary['most_likely_values']['lat']
-    long = prediction_summary['most_likely_values']['long']
-    merch_lat = prediction_summary['most_likely_values']['merch_lat']
-    merch_long = prediction_summary['most_likely_values']['merch_long']
+    lat = prediction_summary['most_likely_values']['lat']['avg']
+    long = prediction_summary['most_likely_values']['long']['avg']
+    merch_lat = prediction_summary['most_likely_values']['merch_lat']['avg']
+    merch_long = prediction_summary['most_likely_values']['merch_long']['avg']
     
     # Calculate distance between user and merchant
     from math import radians, sin, cos, sqrt, atan2
@@ -215,19 +251,18 @@ def interpret_prediction(prediction_summary, processor, threshold=0.7):
     
     return insights
 
-def predict_and_analyze(model, user_transactions, sequence_length, processor, 
-                       actual_transaction=None):
+def predict_and_analyze(model, user_transactions, sequence_length, processor, actual_transaction=None, fraud_transactions=[]):
     """Predict next transaction and provide comprehensive analysis."""
     
     # Get prediction with distributions
-    prediction = predict_next_transaction(model, user_transactions, sequence_length, processor)
+    prediction = predict_next_transaction(model, user_transactions, sequence_length, processor, fraud_transactions)
     
     # Get interpretation insights
     insights = interpret_prediction(prediction, processor)
     
     # If we have the actual transaction, calculate anomaly scores
     if actual_transaction is not None:
-        anomaly_score, feature_scores = calculate_anomaly_score(
+        anomaly_score, feature_scores, feature_probabilities, total_probability = calculate_anomaly_score(
             prediction['raw_distributions'],
             actual_transaction,
             processor
@@ -240,16 +275,24 @@ def predict_and_analyze(model, user_transactions, sequence_length, processor,
             for feature, score in feature_scores.items():
                 if score > 0.8:
                     insights.append(f"⚠️ Unusual {feature}: {score:.2f}")
+        
+        # Add probability insights
+        insights.append(f"📊 Total probability of transaction falling within pattern: {total_probability:.4f}")
+        for feature, prob in feature_probabilities.items():
+            if prob < 0.1:  # Very low probability features
+                insights.append(f"⚠️ Low probability for {feature}: {prob:.4f}")
     
     return {
         'prediction': prediction,
         'insights': insights,
         'anomaly_score': anomaly_score if actual_transaction is not None else None,
-        'feature_scores': feature_scores if actual_transaction is not None else None
+        'feature_scores': feature_scores if actual_transaction is not None else None,
+        'feature_probabilities': feature_probabilities if actual_transaction is not None else None,
+        'total_probability': total_probability if actual_transaction is not None else None
     }
 
-def load_model_and_predict_all(model_path='models/lstm_transaction_model.h5', scaler_path='models/transaction_scaler.joblib', encoders_path='models/categorical_encoders.joblib'):
-    lstm_model, scaler, encoders = load_lstm_model(model_path, scaler_path, encoders_path)
+def load_model_and_predict_all(model_path='models/lstm_transaction_model.h5', encoders_path='models/categorical_encoders.joblib'):
+    lstm_model, encoders = load_lstm_model(model_path, encoders_path)
     
     try:
         df, _ = load_and_preprocess_data()
@@ -270,7 +313,7 @@ def load_model_and_predict_all(model_path='models/lstm_transaction_model.h5', sc
         if len(user_transactions) > sequence_length:
             try:
                 next_transaction = predict_and_analyze(
-                    lstm_model, user_transactions, sequence_length, scaler, encoders
+                    lstm_model, user_transactions, sequence_length, encoders
                 )
                 
                 next_transaction['cc_num'] = cc_num

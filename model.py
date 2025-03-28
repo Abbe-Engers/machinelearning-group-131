@@ -1,6 +1,6 @@
 import joblib
 import numpy as np
-from sklearn.preprocessing import StandardScaler, KBinsDiscretizer
+from sklearn.preprocessing import KBinsDiscretizer
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 from tensorflow.keras.models import Sequential, Model, load_model
@@ -27,13 +27,14 @@ class TransactionFeatureProcessor:
         self.continuous_features = ['amt', 'lat', 'long', 'merch_lat', 'merch_long']
         self.discrete_features = ['hour', 'day', 'month', 'dayofweek']
         self.categorical_features = ['merchant_encoded', 'category_encoded']
-        self.target = 'is_fraud'
         
         self.discretizers = {}
         self.max_values = {}
+
+    def all_features(self):
+        return self.continuous_features + self.discrete_features + self.categorical_features
         
     def fit(self, data):
-        # Initialize discretizers for continuous features
         for feature in self.continuous_features:
             self.discretizers[feature] = KBinsDiscretizer(
                 n_bins=NUM_BINS[feature], 
@@ -43,11 +44,9 @@ class TransactionFeatureProcessor:
             feature_data = data[feature].values.reshape(-1, 1)
             self.discretizers[feature].fit(feature_data)
         
-        # Store max values for discrete features
         for feature in self.discrete_features:
             self.max_values[feature] = int(data[feature].max()) + 1
             
-        # Store max values for categorical features
         for feature in self.categorical_features:
             self.max_values[feature] = int(data[feature].max()) + 1
     
@@ -73,11 +72,7 @@ class TransactionFeatureProcessor:
             )
 
 def create_sequences(user_df, sequence_length=10, processor=None):
-    features = [
-        'amt', 'hour', 'day', 'month', 'dayofweek', 
-        'merchant_encoded', 'category_encoded', 'lat', 'long',
-        'merch_lat', 'merch_long', 'is_fraud'
-    ]
+    features = processor.all_features() if processor else []
     
     if len(user_df) <= sequence_length:
         return None, None
@@ -89,7 +84,6 @@ def create_sequences(user_df, sequence_length=10, processor=None):
         
         X.append(sequence.values)
         
-        # Transform each feature in the target to its categorical representation
         target_transformed = {
             feature: processor.transform_feature(
                 target.to_frame().T, 
@@ -101,7 +95,6 @@ def create_sequences(user_df, sequence_length=10, processor=None):
     return np.array(X), y
 
 def prepare_all_sequences(df, sequence_length=10):
-    # Initialize and fit the feature processor
     processor = TransactionFeatureProcessor()
     processor.fit(df)
     
@@ -114,13 +107,6 @@ def prepare_all_sequences(df, sequence_length=10):
     
     X = np.vstack(all_X)
     
-    # Normalize the input sequences
-    scaler = StandardScaler()
-    X_shape = X.shape
-    X_reshaped = X.reshape(-1, X.shape[-1])
-    X_scaled = scaler.fit_transform(X_reshaped)
-    X = X_scaled.reshape(X_shape)
-    
     # Split the data
     indices = np.arange(len(X))
     train_idx, test_idx = train_test_split(indices, test_size=0.2, random_state=42)
@@ -129,7 +115,7 @@ def prepare_all_sequences(df, sequence_length=10):
     y_train = [all_y[i] for i in train_idx]
     y_test = [all_y[i] for i in test_idx]
     
-    return X_train, X_test, y_train, y_test, scaler, processor
+    return X_train, X_test, y_train, y_test, processor
 
 def create_lstm_model(input_shape, processor):
     # Create input layer
@@ -170,10 +156,7 @@ def create_lstm_model(input_shape, processor):
             activation='softmax', 
             name=feature
         )(x)
-    
-    # Fraud classification
-    outputs['is_fraud'] = Dense(2, activation='softmax', name='is_fraud')(x)
-    
+        
     # Create and compile model
     model = Model(inputs=input_layer, outputs=outputs)
     
@@ -211,16 +194,23 @@ def train_lstm_model(model, X_train, y_train, X_test, y_test, fast_mode=False):
         restore_best_weights=True
     )
     
-    # Convert y_train and y_test to the format expected by the model
-    y_train_dict = {
-        feature: np.stack([y[feature] for y in y_train]) 
-        for feature in y_train[0].keys()
-    }
+    y_train_dict = {}
+    for feature in y_train[0].keys():
+        stacked_data = np.stack([y[feature] for y in y_train])
+        # Check if the stacked data has 3 dimensions and needs to be reshaped
+        if stacked_data.ndim == 3:
+            # Reshape from (samples, 1, classes) to (samples, classes)
+            stacked_data = stacked_data.reshape(stacked_data.shape[0], stacked_data.shape[2])
+        y_train_dict[feature] = stacked_data
     
-    y_test_dict = {
-        feature: np.stack([y[feature] for y in y_test]) 
-        for feature in y_test[0].keys()
-    }
+    y_test_dict = {}
+    for feature in y_test[0].keys():
+        stacked_data = np.stack([y[feature] for y in y_test])
+        # Check if the stacked data has 3 dimensions and needs to be reshaped
+        if stacked_data.ndim == 3:
+            # Reshape from (samples, 1, classes) to (samples, classes)
+            stacked_data = stacked_data.reshape(stacked_data.shape[0], stacked_data.shape[2])
+        y_test_dict[feature] = stacked_data
     
     history = model.fit(
         X_train,
@@ -232,10 +222,8 @@ def train_lstm_model(model, X_train, y_train, X_test, y_test, fast_mode=False):
         verbose=1
     )
     
-    # Plot training history
     plt.figure(figsize=(15, 10))
     
-    # Plot loss
     plt.subplot(2, 1, 1)
     for output in model.output_names:
         plt.plot(history.history[f'{output}_loss'], 
@@ -264,25 +252,19 @@ def train_lstm_model(model, X_train, y_train, X_test, y_test, fast_mode=False):
     
     return model
 
-def load_lstm_model(model_path='models/lstm_transaction_model.h5', 
-                   scaler_path='models/transaction_scaler.joblib', 
-                   processor_path='models/transaction_processor.joblib'):
+def load_lstm_model(model_path='models/lstm_transaction_model.h5', processor_path='models/transaction_processor.joblib'):
     print(f"Loading model from {model_path}...")
     
     if not os.path.exists(model_path):
         print(f"Error: Model file {model_path} not found.")
-        return None
-    if not os.path.exists(scaler_path):
-        print(f"Error: Scaler file {scaler_path} not found.")
-        return None
+        return None, None
     if not os.path.exists(processor_path):
         print(f"Error: Processor file {processor_path} not found.")
-        return None
+        return None, None
 
     custom_objects = {'categorical_crossentropy': tf.keras.losses.CategoricalCrossentropy()}
     
     lstm_model = load_model(model_path, custom_objects=custom_objects)
-    scaler = joblib.load(scaler_path)
     processor = joblib.load(processor_path)
 
-    return lstm_model, scaler, processor
+    return lstm_model, processor
